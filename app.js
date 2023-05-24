@@ -1,6 +1,7 @@
 import { chromium } from 'playwright'
 import fs from 'fs/promises'
 import express from 'express'
+import cron from 'node-cron';
 import cors from 'cors'
 import 'dotenv/config'
 
@@ -50,12 +51,12 @@ const server = app.listen(PORT, () => {
 })
 
 // Ejecutar la función automáticamente cada hora (3600000 milisegundos)
-setInterval(async () => {
-    const getData = await diabloResults('nodejs')
-      const read = await fs.readFile('./db/test.json', 'utf-8')
-      const json = await JSON.parse(read)
-      if (JSON.stringify(json) !== JSON.stringify(getData)) {
-        await fs.writeFile('./db/test.json', JSON.stringify(getData, null, 2), 'utf-8')
-      }
-      console.log(new Date())
-}, 3600000)
+cron.schedule('0 * * * *', async () => {
+  const getData = await diabloResults('nodejs')
+  const read = await fs.readFile('./db/test.json', 'utf-8')
+  const json = await JSON.parse(read)
+  if (JSON.stringify(json) !== JSON.stringify(getData)) {
+    await fs.writeFile('./db/test.json', JSON.stringify(getData, null, 2), 'utf-8')
+  }
+  console.log(`Actualizacion hecha ${new Date()}`)
+});
