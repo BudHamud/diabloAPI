@@ -13,7 +13,7 @@ RUN npm ci --only=production
 COPY . .
 
 # Ejecutar los comandos necesarios
-RUN npx playwright install
+RUN npm i && npx playwright install
 
 # Exponer el puerto necesario para la aplicación
 EXPOSE 8080
