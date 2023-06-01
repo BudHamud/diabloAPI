@@ -1,62 +1,89 @@
+import sqlite3 from 'sqlite3';
+import { open } from 'sqlite';
 import { chromium } from 'playwright'
-import fs from 'fs/promises'
+import cors from 'cors'
 import express from 'express'
 import cron from 'node-cron';
-import cors from 'cors'
 import 'dotenv/config'
 
 const app = express()
 const PORT = process.env.PORT
 
-const diabloResults = async () => {
-  const browser = await chromium.launch()
-  const page = await browser.newPage()
-  await page.goto('https://diabloimmortal.blizzard.com/en-gb/')
-  const list = await page.evaluate(() => {
-    let results = []
-    // [slot="gallery-items]
-    document.querySelectorAll('blz-card').forEach((e, i) => {
-      results.push({ index: i, title: e.innerText, link: e.href, img: e.childNodes[0].src })
-    })
-    return results
-  })
-
-  await browser.close()
-  return list
-}
-
 app.use(cors())
-app.get('/es', async (req, res) => {
-  const read = await fs.readFile('./db/db.json', 'utf-8')
-  const result = await JSON.parse(read)
-  res.json(result)
-})
+
+const dbPromise = open({
+  filename: './db/database.db',
+  driver: sqlite3.Database,
+});
+
 app.get('/en', async (req, res) => {
-  const read = await fs.readFile('./db/test.json', 'utf-8')
-  const result = await JSON.parse(read)
-  res.json(result)
-})
-// app.get('/update', async (req, res) => {
-//   const getData = await diabloResults('nodejs')
-//   const read = await fs.readFile('./db/test.json', 'utf-8')
-//   const json = await JSON.parse(read)
-//   if (JSON.stringify(json) !== JSON.stringify(getData)) {
-//     await fs.writeFile('./db/test.json', JSON.stringify(getData, null, 2), 'utf-8')
-//   }
-//   res.json(json)
-// })
+  try {
+    const db = await dbPromise;
 
-const server = app.listen(PORT, () => {
-  console.log('Server on ' + PORT)
-})
+    const results = await db.all('SELECT * FROM diablo_results');
 
-// Ejecutar la función automáticamente cada hora (3600000 milisegundos)
-cron.schedule('0 * * * *', async () => {
-  const getData = await diabloResults('nodejs')
-  const read = await fs.readFile('./db/test.json', 'utf-8')
-  const json = await JSON.parse(read)
-  if (JSON.stringify(json) !== JSON.stringify(getData)) {
-    await fs.writeFile('./db/test.json', JSON.stringify(getData, null, 2), 'utf-8')
+    res.json(results);
+  } catch (error) {
+    console.error('Ocurrió un error:', error);
+    res.status(500).json({ error: 'Error al obtener los resultados' });
   }
-  console.log(`Actualizacion hecha ${new Date()}`)
+});
+
+app.listen(PORT, () => {
+  console.log(`Server on ${PORT}`);
+});
+
+const diabloResults = async (url) => {
+  const db = await dbPromise;
+  await db.run(`CREATE TABLE IF NOT EXISTS diablo_results (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    \`index\` INTEGER,
+    title TEXT,
+    link TEXT,
+    img TEXT
+  )`);
+
+  const browser = await chromium.launch();
+  const page = await browser.newPage();
+  await page.goto(url);
+
+  const results = await page.evaluate(() => {
+    const elements = document.querySelectorAll('blz-card');
+    const results = [];
+
+    elements.forEach((element, index) => {
+      const title = element.innerText;
+      const link = element.href;
+      const img = element.childNodes[0].src;
+
+      results.push({ index, title, link, img });
+    });
+
+    return results;
+  });
+
+  await browser.close();
+
+  // Borra los resultados anteriores
+  await db.run(`DELETE FROM diablo_results`);
+
+  // Inserta los nuevos resultados en la base de datos
+  for (const result of results) {
+    await db.run(`INSERT INTO diablo_results (\`index\`, title, link, img) VALUES (?, ?, ?, ?)`, [result.index, result.title, result.link, result.img]);
+  }
+
+  // Consulta los resultados de la base de datos
+  const rows = await db.all(`SELECT * FROM diablo_results`);
+
+  return rows;
+};
+
+// Ejemplo de uso de la función diabloResults
+cron.schedule('* * * * *', async () => {
+  try {
+    const results = await diabloResults('https://diabloimmortal.blizzard.com/en-gb/');
+    console.log(results);
+  } catch (error) {
+    console.error('Ocurrió un error:', error);
+  }
 });
