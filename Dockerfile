@@ -3,11 +3,17 @@ FROM node:16-alpine
 
 WORKDIR /app
 
-# Copiar los archivos de la etapa de construcción
-COPY --from=builder /app ./
+# Copiar los archivos de la aplicación
+COPY package.json package-lock.json ./
+
+# Instalar las dependencias de producción
+RUN npm ci --only=production
+
+# Copiar el resto de los archivos de la aplicación
+COPY . .
 
 # Ejecutar los comandos necesarios
-RUN npm i && npx playwright install
+RUN npx playwright install
 
 # Exponer el puerto necesario para la aplicación
 EXPOSE 8080
